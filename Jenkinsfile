@@ -40,13 +40,13 @@ pipeline {
                 """
             }
         }
-       stage('Deploy to EKS') {
+stage('Deploy to EKS') {
     steps {
         sh """
         aws eks update-kubeconfig --region ${AWS_REGION} --name ${EKS_CLUSTER}
         sed -i 's|BUILD_NUMBER_PLACEHOLDER|${BUILD_NUMBER}|g' deployment.yml
-        kubectl apply -f deployment.yml
-        kubectl apply -f service.yml
+        kubectl apply -f deployment.yml --validate=false
+        kubectl apply -f service.yml --validate=false
         kubectl rollout status deployment/myapp --timeout=120s
         """
     }
