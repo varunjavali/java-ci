@@ -16,16 +16,17 @@ pipeline {
         }
         stage('Build Binaries') {
             steps {
-                sh 'mvn clean install'
-                sh 'cp target/java-frontend-app.war .'
+                sh 'mvn clean package -DskipTests'
+                sh 'ls -la target/'
+                sh 'cp target/myapp.war .'
             }
         }
         stage('Build Docker Image') {
             steps {
                 sh """
-                docker build -t java-frontend-app:${BUILD_NUMBER} .
-                docker tag java-frontend-app:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}
-                docker tag java-frontend-app:${BUILD_NUMBER} ${ECR_REPO}:latest
+                docker build -t myapp:${BUILD_NUMBER} .
+                docker tag myapp:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}
+                docker tag myapp:${BUILD_NUMBER} ${ECR_REPO}:latest
                 """
             }
         }
@@ -34,7 +35,6 @@ pipeline {
                 sh """
                 aws ecr get-login-password --region ${AWS_REGION} | \
                 docker login --username AWS --password-stdin ${ECR_REPO}
-
                 docker push ${ECR_REPO}:${BUILD_NUMBER}
                 docker push ${ECR_REPO}:latest
                 """
@@ -47,21 +47,21 @@ pipeline {
                 sed -i 's|BUILD_NUMBER_PLACEHOLDER|${BUILD_NUMBER}|g' k8s/deployment.yml
                 kubectl apply -f k8s/deployment.yml
                 kubectl apply -f k8s/service.yml
-                kubectl rollout status deployment/java-frontend-app --timeout=120s
+                kubectl rollout status deployment/myapp --timeout=120s
                 """
             }
         }
     }
     post {
         success {
-            sh "kubectl get svc java-frontend-svc"
+            sh "kubectl get svc myapp-svc"
             echo "✅ Deployed ${ECR_REPO}:${BUILD_NUMBER} to EKS"
         }
         failure {
             echo "❌ Pipeline failed — check logs above"
         }
         always {
-            sh "docker rmi java-frontend-app:${BUILD_NUMBER} || true"
+            sh "docker rmi myapp:${BUILD_NUMBER} || true"
             sh "docker rmi ${ECR_REPO}:${BUILD_NUMBER} || true"
         }
     }
