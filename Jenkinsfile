@@ -45,8 +45,8 @@ pipeline {
                 sh """
                 aws eks update-kubeconfig --region ${AWS_REGION} --name ${EKS_CLUSTER}
                 sed -i 's|BUILD_NUMBER_PLACEHOLDER|${BUILD_NUMBER}|g' k8s/deployment.yml
-                kubectl apply -f k8s/deployment.yml
-                kubectl apply -f k8s/service.yml
+                kubectl apply -f deployment.yml
+                kubectl apply -f service.yml
                 kubectl rollout status deployment/myapp --timeout=120s
                 """
             }
