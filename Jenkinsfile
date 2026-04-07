@@ -1,43 +1,68 @@
 pipeline {
     agent any
-
+    environment {
+        AWS_REGION   = 'ap-south-1'
+        ECR_REPO     = '768571909004.dkr.ecr.ap-south-1.amazonaws.com/varun'
+        EKS_CLUSTER  = 'varun-cluster'
+    }
     tools {
-        maven 'Maven'
-        jdk 'JDK17'
+        maven 'maven'
     }
-
     stages {
-        stage('Checkout') {
+        stage('Clone Repo') {
             steps {
-                git 'https://github.com/YOUR_GITHUB_USERNAME/java-ci-sample.git'
+                git branch: 'main', url: 'https://github.com/varunjavali/java-ci'
             }
         }
-
-        stage('Build') {
+        stage('Build Binaries') {
             steps {
-                sh 'mvn clean compile'
+                sh 'mvn clean install'
+                sh 'cp target/java-frontend-app.war .'
             }
         }
-
-        stage('Test') {
+        stage('Build Docker Image') {
             steps {
-                sh 'mvn test'
+                sh """
+                docker build -t java-frontend-app:${BUILD_NUMBER} .
+                docker tag java-frontend-app:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}
+                docker tag java-frontend-app:${BUILD_NUMBER} ${ECR_REPO}:latest
+                """
             }
         }
-
-        stage('Package') {
+        stage('Push to ECR') {
             steps {
-                sh 'mvn package'
+                sh """
+                aws ecr get-login-password --region ${AWS_REGION} | \
+                docker login --username AWS --password-stdin ${ECR_REPO}
+
+                docker push ${ECR_REPO}:${BUILD_NUMBER}
+                docker push ${ECR_REPO}:latest
+                """
+            }
+        }
+        stage('Deploy to EKS') {
+            steps {
+                sh """
+                aws eks update-kubeconfig --region ${AWS_REGION} --name ${EKS_CLUSTER}
+                sed -i 's|BUILD_NUMBER_PLACEHOLDER|${BUILD_NUMBER}|g' k8s/deployment.yml
+                kubectl apply -f k8s/deployment.yml
+                kubectl apply -f k8s/service.yml
+                kubectl rollout status deployment/java-frontend-app --timeout=120s
+                """
             }
         }
     }
-
     post {
         success {
-            echo 'Build Successful!'
+            sh "kubectl get svc java-frontend-svc"
+            echo "✅ Deployed ${ECR_REPO}:${BUILD_NUMBER} to EKS"
         }
         failure {
-            echo 'Build Failed!'
+            echo "❌ Pipeline failed — check logs above"
+        }
+        always {
+            sh "docker rmi java-frontend-app:${BUILD_NUMBER} || true"
+            sh "docker rmi ${ECR_REPO}:${BUILD_NUMBER} || true"
         }
     }
 }
